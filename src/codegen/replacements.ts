@@ -23,7 +23,7 @@ export const globalReplacements: ReplacementRule[] = [
   },
 ];
 
-// This is a list of globals we should access using @ notation
+// This is a list of globals we should access using @ notation.
 // This prevents a global override attacks.
 // Note that the public `Bun` global is immutable.
 // undefined -> __intrinsic__undefined -> @undefined
@@ -53,6 +53,10 @@ export const globalsToPrefix = [
   "isFinite",
   "undefined",
 ];
+
+// This is a list of symbol we should access using @ notation.
+// Array.prototype.$$iterator -> Array.prototype.__intrinsic_$iterator -> Array.prototype.@$iterator
+const symbolPropsToPrefix = ["$iterator", "$species", "$unscopables"];
 
 replacements.push({
   from: new RegExp(`\\bextends\\s+(${globalsToPrefix.join("|")})`, "g"),
@@ -88,18 +92,16 @@ export const warnOnIdentifiersNotPresentAtRuntime = [
 // These are passed to --define to the bundler
 const debug = process.argv[2] === "--debug=ON";
 export const define: Record<string, string> = {
-  "process.env.NODE_ENV": JSON.stringify(debug ? "development" : "production"),
-  "IS_BUN_DEVELOPMENT": String(debug),
-
+  IS_BUN_DEVELOPMENT: String(debug),
   $streamClosed: "1",
   $streamClosing: "2",
   $streamErrored: "3",
   $streamReadable: "4",
   $streamWaiting: "5",
   $streamWritable: "6",
-
-  "process.platform": JSON.stringify(Bun.env.TARGET_PLATFORM ?? process.platform),
   "process.arch": JSON.stringify(Bun.env.TARGET_ARCH ?? process.arch),
+  "process.env.NODE_ENV": JSON.stringify(debug ? "development" : "production"),
+  "process.platform": JSON.stringify(Bun.env.TARGET_PLATFORM ?? process.platform),
 };
 
 // ------------------------------ //
@@ -133,12 +135,16 @@ export interface ReplacementRule {
 /** Applies source code replacements as defined in `replacements` */
 export function applyReplacements(src: string, length: number) {
   let slice = src.slice(0, length);
-  let rest = src.slice(length);
-  slice = slice.replace(/([^a-zA-Z0-9_\$])\$([a-zA-Z0-9_]+\b)/gm, `$1__intrinsic__$2`);
+  const rest = src.slice(length);
+  // Replace symbols @@ names first.
+  for (const name of symbolPropsToPrefix) {
+    slice = slice.replaceAll(`.$${name}`, `.__intrinsic__$${name}`);
+  }
+  slice = slice.replace(/([^a-zA-Z0-9_\$])\$([a-zA-Z0-9_]+\b)/gm, "$1__intrinsic__$2");
   for (const replacement of replacements) {
     slice = slice.replace(replacement.from, replacement.to.replaceAll("$", "__intrinsic__").replaceAll("%", "$"));
   }
-  let match;
+  let match: ReturnType<typeof String.prototype.match>;
   if ((match = slice.match(/__intrinsic__(debug|assert)$/)) && rest.startsWith("(")) {
     const name = match[1];
     if (name === "debug") {
