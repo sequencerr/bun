@@ -174,10 +174,11 @@ async function cleanTestId(prisma: PrismaClient, testId: number) {
           };
         }
         const createdUsers = await Promise.all(
-          new Array(10).fill(0).map((_, i) =>
-            prisma.user.create({
-              data: user(i),
-            }),
+          new Array(10).fill(0).map(
+            async (_, i) =>
+              await prisma.user.create({
+                data: user(i),
+              }),
           ),
         );
         expect(createdUsers.length).toBe(10);
@@ -191,7 +192,7 @@ async function cleanTestId(prisma: PrismaClient, testId: number) {
 
         for (let i = 0; i < 10; i++) {
           const loadAllUsers10Times = await Promise.all(
-            new Array(10).fill(0).map(() => prisma.user.findMany({ where: { testId } })),
+            new Array(10).fill(0).map(() => prisma.user.findMany({ where: { testId }, orderBy: { id: "asc" } })),
           );
           for (const users of loadAllUsers10Times) {
             expect(users).toEqual(createdUsers);
